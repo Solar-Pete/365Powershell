@@ -1,0 +1,42 @@
+#Connect to MsolService
+Connect-MsolService -Credential $credential
+
+#Connect to AzureAD
+Connect-AzureAD -Credential $credential
+
+#Get all groups
+$allGroups = Get-AzureADGroup
+
+#Get all licensed users
+$users = Get-MsolUser -All | Where-Object { $_.IsLicensed -eq $true }
+
+#Initialize result
+$result = @()
+
+foreach ($user in $users) {
+    #Get the licenses
+    $licenses = $user.Licenses.AccountSku.SkuPartNumber -join ", "
+
+    #Get the groups the user is a member of
+    $userGroups = Get-AzureADUserMembership -ObjectId $user.ObjectId | Where-Object { $_.ObjectType -eq 'Group' }
+
+    #Initialize user result
+    $userResult = New-Object -Type PSObject
+    $userResult | Add-Member -Type NoteProperty -Name "User" -Value $user.DisplayName
+    $userResult | Add-Member -Type NoteProperty -Name "Email" -Value $user.UserPrincipalName
+    $userResult | Add-Member -Type NoteProperty -Name "Licenses" -Value $licenses
+
+    foreach ($group in $allGroups) {
+        #Check if the user is a member of the group
+        $isMember = $userGroups.ObjectId -contains $group.ObjectId
+
+        #Add to user result
+        $userResult | Add-Member -Type NoteProperty -Name $group.DisplayName -Value $(if ($isMember) { "X" } else { "" })
+    }
+
+    #Add to result
+    $result += $userResult
+}
+
+#Export to CSV
+$result | Export-Csv -Path "C:\temp\UserGroupMembership.csv" -NoTypeInformation
